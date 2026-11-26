@@ -23,6 +23,19 @@ Luego abre http://localhost:4200.
 
 La dirección de la API está en `src/environments/environment.ts` (publicada) y `src/environments/environment.local.ts` (local).
 
+## Publicación (Cloudflare Pages)
+
+- Versión de prueba (rama `dev`): https://dev.comercial-nova-web.pages.dev
+- Para publicar una nueva versión de prueba: `npm run subir:dev`
+- `public/_headers` agrega las cabeceras de seguridad (CSP, anti-iframe, nosniff) y `public/_redirects` hace que las rutas de Angular funcionen al recargar.
+
+## Seguridad
+
+- El token de Sanctum solo se envía a la API (el interceptor no lo agrega a otros dominios) y se borra al cerrar sesión o si la API responde 401.
+- Las pantallas y botones se muestran según los permisos del usuario (`/api/me`); la API vuelve a validar cada permiso.
+- Toda eliminación pide confirmación; la API no permite borrar el propio usuario, el rol administrador, roles con usuarios ni categorías con productos.
+- La CSP solo permite conectarse a la API de Wasmer; si cambia la dirección de la API, actualizar `connect-src` en `public/_headers`.
+
 ## Pantallas
 
 | Pantalla | Ruta | Endpoints | Caso de uso |
@@ -34,8 +47,9 @@ La dirección de la API está en `src/environments/environment.ts` (publicada) y
 | Productos | `/productos` | `GET /api/productos` | CU-03 |
 | Crear / editar producto | `/productos/nuevo`, `/productos/:id` | `POST`, `PUT /api/productos/{id}` con `version` | CU-06 (P2) |
 | Movimientos de stock | `/inventario` | `GET /api/movimientos`* | CU-10 |
-| Clientes | `/clientes` | `GET`, `POST`, `PUT /api/clientes` | CU-05, CU-07 |
-| Usuarios y permisos | `/configuracion` | `GET /api/users`, `/roles`, `/permisos`, `PUT /api/roles/{id}` | CU-09 |
+| Clientes | `/clientes`, `/clientes/nuevo`, `/clientes/:id` | `GET`, `POST`, `PUT`, `DELETE /api/clientes` | CU-05, CU-07 |
+| Categorías | `/productos/categorias` | `GET`, `POST`, `PUT`, `DELETE /api/categorias` | CU-06 |
+| Usuarios y permisos | `/configuracion` | `GET`, `POST`, `PUT`, `DELETE /api/users` y `/api/roles`, `GET /api/permisos` | CU-09 |
 
 \* Endpoints que la API todavía no publica. Las pantallas ya están preparadas y muestran un aviso mientras tanto.
 
