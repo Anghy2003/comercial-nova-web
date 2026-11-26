@@ -27,6 +27,13 @@ export const routes: Routes = [
         loadComponent: () => import('./pages/productos').then((m) => m.ProductosPage),
       },
       {
+        path: 'productos/categorias',
+        title: 'Categorías · Comercial Nova',
+        canActivate: [permisoGuard],
+        data: { permiso: 'categorias.ver' },
+        loadComponent: () => import('./pages/categorias').then((m) => m.CategoriasPage),
+      },
+      {
         path: 'productos/nuevo',
         title: 'Nuevo producto · Comercial Nova',
         canActivate: [permisoGuard],
@@ -48,6 +55,20 @@ export const routes: Routes = [
         canActivate: [permisoGuard],
         data: { permiso: 'clientes.ver' },
         loadComponent: () => import('./pages/clientes').then((m) => m.ClientesPage),
+      },
+      {
+        path: 'clientes/nuevo',
+        title: 'Nuevo cliente · Comercial Nova',
+        canActivate: [permisoGuard],
+        data: { permiso: 'clientes.crear' },
+        loadComponent: () => import('./pages/cliente-editar').then((m) => m.ClienteEditarPage),
+      },
+      {
+        path: 'clientes/:id',
+        title: 'Cliente · Comercial Nova',
+        canActivate: [permisoGuard],
+        data: { permiso: 'clientes.ver' },
+        loadComponent: () => import('./pages/cliente-editar').then((m) => m.ClienteEditarPage),
       },
       {
         path: 'configuracion',

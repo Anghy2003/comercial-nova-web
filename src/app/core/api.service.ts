@@ -13,6 +13,7 @@ import {
   ProductoInput,
   Rol,
   Usuario,
+  UsuarioInput,
   VentaInput,
 } from './models';
 
@@ -42,21 +43,41 @@ export class ApiService {
   actualizarProducto = (id: number, p: ProductoInput) =>
     this.http.put<{ data: Producto }>(`${this.url}/productos/${id}`, p).pipe(map((r) => r.data));
 
-  // Categorías
+  eliminarProducto = (id: number) => this.http.delete<void>(`${this.url}/productos/${id}`);
+
+  // Categorías de productos
   categorias = () => this.todos<Categoria>('categorias');
+  categoria = (id: number) => this.http.get<{ data: Categoria }>(`${this.url}/categorias/${id}`).pipe(map((r) => r.data));
+  crearCategoria = (nombre: string) => this.http.post<{ data: Categoria }>(`${this.url}/categorias`, { nombre }).pipe(map((r) => r.data));
+  actualizarCategoria = (id: number, nombre: string) =>
+    this.http.put<{ data: Categoria }>(`${this.url}/categorias/${id}`, { nombre }).pipe(map((r) => r.data));
+  eliminarCategoria = (id: number) => this.http.delete<void>(`${this.url}/categorias/${id}`);
 
   // Clientes
   clientes = () => this.todos<Cliente>('clientes');
+  cliente = (id: number) => this.http.get<{ data: Cliente }>(`${this.url}/clientes/${id}`).pipe(map((r) => r.data));
   crearCliente = (c: ClienteInput) => this.http.post<{ data: Cliente }>(`${this.url}/clientes`, c).pipe(map((r) => r.data));
   actualizarCliente = (id: number, c: ClienteInput) =>
     this.http.put<{ data: Cliente }>(`${this.url}/clientes/${id}`, c).pipe(map((r) => r.data));
+  eliminarCliente = (id: number) => this.http.delete<void>(`${this.url}/clientes/${id}`);
 
-  // Usuarios, roles y permisos
+  // Usuarios
   usuarios = () => this.todos<Usuario>('users');
+  usuario = (id: number) => this.http.get<{ data: Usuario }>(`${this.url}/users/${id}`).pipe(map((r) => r.data));
+  crearUsuario = (u: UsuarioInput) => this.http.post<{ data: Usuario }>(`${this.url}/users`, u).pipe(map((r) => r.data));
+  actualizarUsuario = (id: number, u: UsuarioInput) =>
+    this.http.put<{ data: Usuario }>(`${this.url}/users/${id}`, u).pipe(map((r) => r.data));
+  eliminarUsuario = (id: number) => this.http.delete<void>(`${this.url}/users/${id}`);
+
+  // Roles y permisos
   roles = () => this.todos<Rol>('roles');
-  permisos = () => this.http.get<{ data: PermisoGrupo[] }>(`${this.url}/permisos`).pipe(map((r) => r.data));
+  rol = (id: number) => this.http.get<{ data: Rol }>(`${this.url}/roles/${id}`).pipe(map((r) => r.data));
+  crearRol = (name: string, permisos: string[]) =>
+    this.http.post<{ data: Rol }>(`${this.url}/roles`, { name, permisos }).pipe(map((r) => r.data));
   actualizarRol = (id: number, name: string, permisos: string[]) =>
     this.http.put<{ data: Rol }>(`${this.url}/roles/${id}`, { name, permisos }).pipe(map((r) => r.data));
+  eliminarRol = (id: number) => this.http.delete<void>(`${this.url}/roles/${id}`);
+  permisos = () => this.http.get<{ data: PermisoGrupo[] }>(`${this.url}/permisos`).pipe(map((r) => r.data));
 
   // Ventas (endpoint pendiente en la API: POST /api/ventas)
   registrarVenta = (v: VentaInput) => this.http.post<{ data: { id: number; numero: string } }>(`${this.url}/ventas`, v);

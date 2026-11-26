@@ -1,14 +1,13 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { forkJoin, of } from 'rxjs';
+import { Observable, forkJoin, map, of, switchMap, tap } from 'rxjs';
 import { ApiService, mensajeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
-import { Categoria, Cliente, Producto, VentaInput } from '../core/models';
-import { ClienteForm } from '../shared/cliente-form';
+import { CONSUMIDOR_FINAL, Categoria, Cliente, Producto, TipoIdentificacion, VentaInput } from '../core/models';
 import { Icono, iconoCategoria } from '../shared/icono';
-import { UsdPipe, estadoStock } from '../shared/formato';
+import { TIPOS_IDENTIFICACION, UsdPipe, estadoStock } from '../shared/formato';
+import { errorEmail, errorIdentificacion, erroresCampos } from '../shared/validar';
 
 interface Linea {
   producto: Producto;
@@ -18,7 +17,7 @@ interface Linea {
 /** CU-02 Registrar venta en una sola pantalla (P4) con validación de stock en la API (P1). */
 @Component({
   selector: 'app-nueva-venta',
-  imports: [FormsModule, Icono, UsdPipe, ClienteForm],
+  imports: [FormsModule, Icono, UsdPipe],
   template: `
     <div class="venta">
       <section class="catalogo">
@@ -87,15 +86,40 @@ interface Linea {
         }
 
         <div class="bloque">
-          <div class="bloque-fila"><span class="gris etiqueta-chica">CLIENTE</span>
-            <button class="enlace" (click)="nuevoCliente.set(true)" [disabled]="!auth.puede('clientes.crear')">+ Cliente nuevo</button>
+          <span class="gris etiqueta-chica">CLIENTE</span>
+          <div class="pagos dos">
+            <button [class.activo]="modoCliente() === 'final'" (click)="modoCliente.set('final')">Consumidor final</button>
+            <button [class.activo]="modoCliente() === 'datos'" (click)="modoCliente.set('datos')">Con datos</button>
           </div>
-          <select class="input" [ngModel]="clienteId()" (ngModelChange)="clienteId.set(+$event)">
-            <option [ngValue]="0" disabled>Selecciona un cliente…</option>
-            @for (c of clientes(); track c.id) {
-              <option [ngValue]="c.id">{{ c.nombre }} · {{ c.identificacion }}</option>
+          @if (modoCliente() === 'final') {
+            <p class="gris nota">La factura sale a nombre de «Consumidor final» (RUC 9999999999999).</p>
+          } @else {
+            <div class="fila-ident">
+              <select class="input tipo" [ngModel]="tipoIdent()" (ngModelChange)="tipoIdent.set($event)" aria-label="Tipo de identificación">
+                @for (t of tipos; track t.valor) { <option [value]="t.valor">{{ t.texto }}</option> }
+              </select>
+              <input class="input mono" list="lista-clientes" placeholder="Identificación o nombre" [ngModel]="busqueda()" (ngModelChange)="elegirBusqueda($event)" maxlength="60" />
+              <datalist id="lista-clientes">
+                @for (c of clientes(); track c.id) { <option [value]="c.identificacion">{{ c.nombre }}</option> }
+              </datalist>
+            </div>
+            @if (clienteEncontrado(); as c) {
+              <div class="cliente-ok"><app-icono nombre="ok" [tam]="18" /><div><strong>{{ c.nombre }}</strong><br /><span class="gris">{{ c.identificacion }} · cliente registrado</span></div></div>
+            } @else if (busqueda().trim()) {
+              @if (errorIdentNuevo()) {
+                <span class="ayuda-error">{{ errorIdentNuevo() }}</span>
+              } @else {
+                <div class="nuevo-cliente">
+                  <span class="pill pill-azul">Cliente nuevo: se registrará al emitir la factura</span>
+                  <input class="input" placeholder="Nombre o razón social *" [ngModel]="nuevoNombre()" (ngModelChange)="nuevoNombre.set($event)" maxlength="255" />
+                  <input class="input" type="email" placeholder="Correo (opcional)" [ngModel]="nuevoEmail()" (ngModelChange)="nuevoEmail.set($event)" maxlength="255" />
+                  <input class="input" placeholder="Teléfono (opcional)" [ngModel]="nuevoTelefono()" (ngModelChange)="nuevoTelefono.set($event)" maxlength="20" />
+                  @if (errorEmailNuevo()) { <span class="ayuda-error">{{ errorEmailNuevo() }}</span> }
+                  @if (!auth.puede('clientes.crear')) { <span class="ayuda-error">Tu usuario no puede registrar clientes; usa Consumidor final.</span> }
+                </div>
+              }
             }
-          </select>
+          }
         </div>
 
         <div class="bloque">
@@ -145,10 +169,6 @@ interface Linea {
         <button class="btn btn-secundario btn-ancho" (click)="descartar()" [disabled]="carrito().length === 0">Descartar</button>
       </aside>
     </div>
-
-    @if (nuevoCliente()) {
-      <app-cliente-form (cerrar)="nuevoCliente.set(false)" (guardado)="clienteCreado($event)" textoGuardar="Guardar y usar en la venta" />
-    }
   `,
   styles: `
     .venta { display: grid; grid-template-columns: 1fr 380px; gap: 24px; align-items: start; }
@@ -176,6 +196,13 @@ interface Linea {
     .pagos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: #eef1f6; padding: 4px; border-radius: 10px; }
     .pagos button { border: 0; background: none; padding: 8px 4px; border-radius: 8px; font: inherit; font-weight: 600; color: var(--texto-2); cursor: pointer; }
     .pagos button.activo { background: var(--azul); color: #fff; }
+    .pagos.dos { grid-template-columns: 1fr 1fr; }
+    .nota { margin: 0; font-size: 12.5px; }
+    .fila-ident { display: grid; grid-template-columns: 110px 1fr; gap: 6px; }
+    .cliente-ok { display: flex; gap: 8px; align-items: center; color: var(--verde); font-size: 13px; }
+    .cliente-ok strong { color: var(--texto); }
+    .nuevo-cliente { display: flex; flex-direction: column; gap: 6px; }
+    .nuevo-cliente .pill { align-self: flex-start; white-space: normal; }
     .lineas { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow: auto; }
     .linea { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--borde); border-radius: 10px; }
     .linea.sin-stock { background: var(--rojo-suave); border-color: #f5c2c2; }
@@ -195,7 +222,6 @@ interface Linea {
 })
 export class NuevaVentaPage {
   private api = inject(ApiService);
-  private router = inject(Router);
   auth = inject(AuthService);
 
   productos = signal<Producto[]>([]);
@@ -205,20 +231,46 @@ export class NuevaVentaPage {
   texto = signal('');
   categoria = signal<number | null>(null);
   carrito = signal<Linea[]>([]);
-  clienteId = signal(0);
   formaPago = signal<VentaInput['forma_pago']>('efectivo');
   enviando = signal(false);
   errorStock = signal('');
   productoSinStock = signal<number | null>(null);
   mensaje = signal<{ tipo: string; texto: string } | null>(null);
-  nuevoCliente = signal(false);
   estado = estadoStock;
   icono = iconoCategoria;
+  tipos = TIPOS_IDENTIFICACION;
   formas = [
     { valor: 'efectivo' as const, texto: 'Efectivo' },
     { valor: 'tarjeta' as const, texto: 'Tarjeta' },
     { valor: 'transferencia' as const, texto: 'Transf.' },
   ];
+
+  // Cliente de la factura: "Consumidor final" o con datos (existente o nuevo).
+  modoCliente = signal<'final' | 'datos'>('final');
+  tipoIdent = signal<TipoIdentificacion>('CEDULA');
+  busqueda = signal('');
+  nuevoNombre = signal('');
+  nuevoEmail = signal('');
+  nuevoTelefono = signal('');
+
+  clienteEncontrado = computed(() => {
+    const b = this.busqueda().trim().toLowerCase();
+    if (!b) return null;
+    return this.clientes().find((c) => c.identificacion.toLowerCase() === b || c.nombre.toLowerCase() === b) ?? null;
+  });
+  errorIdentNuevo = computed(() => errorIdentificacion(this.tipoIdent(), this.busqueda()));
+  errorEmailNuevo = computed(() => errorEmail(this.nuevoEmail()));
+  clienteListo = computed(() => {
+    if (this.modoCliente() === 'final') return true;
+    if (this.clienteEncontrado()) return true;
+    return (
+      !!this.busqueda().trim() &&
+      !this.errorIdentNuevo() &&
+      !!this.nuevoNombre().trim() &&
+      !this.errorEmailNuevo() &&
+      this.auth.puede('clientes.crear')
+    );
+  });
 
   visibles = computed(() => {
     const t = this.texto().toLowerCase().trim();
@@ -229,17 +281,24 @@ export class NuevaVentaPage {
   });
 
   totales = computed(() => {
-    let sub0 = 0, sub15 = 0, iva = 0;
+    let sub0 = 0,
+      sub15 = 0,
+      iva = 0;
     for (const l of this.carrito()) {
       const base = +l.producto.precio * l.cantidad;
       const pct = +l.producto.porcentaje_iva;
-      if (pct > 0) { sub15 += base; iva += (base * pct) / 100; } else { sub0 += base; }
+      if (pct > 0) {
+        sub15 += base;
+        iva += (base * pct) / 100;
+      } else {
+        sub0 += base;
+      }
     }
     const r = (n: number) => Math.round(n * 100) / 100;
     return { sub0: r(sub0), sub15: r(sub15), iva: r(iva), total: r(sub0 + sub15 + iva) };
   });
 
-  puedeEmitir = computed(() => this.carrito().length > 0 && this.clienteId() > 0 && !this.enviando() && !this.productoSinStock());
+  puedeEmitir = computed(() => this.carrito().length > 0 && this.clienteListo() && !this.enviando() && !this.productoSinStock());
 
   constructor() {
     forkJoin({
@@ -251,8 +310,6 @@ export class NuevaVentaPage {
         this.productos.set(r.productos);
         this.categorias.set(r.categorias);
         this.clientes.set(r.clientes.filter((c) => c.activo));
-        const cf = r.clientes.find((c) => c.nombre.toLowerCase().includes('consumidor final'));
-        if (cf) this.clienteId.set(cf.id);
         this.cargando.set(false);
       },
       error: (e) => {
@@ -260,6 +317,12 @@ export class NuevaVentaPage {
         this.cargando.set(false);
       },
     });
+  }
+
+  elegirBusqueda(valor: string): void {
+    this.busqueda.set(valor);
+    const c = this.clienteEncontrado();
+    if (c) this.tipoIdent.set(c.tipo_identificacion);
   }
 
   cantidadEnCarrito(id: number): number {
@@ -288,45 +351,76 @@ export class NuevaVentaPage {
   descartar(): void {
     this.carrito.set([]);
     this.limpiarAvisos();
-  }
-
-  clienteCreado(c: Cliente): void {
-    this.clientes.update((l) => [...l, c].sort((a, b) => a.nombre.localeCompare(b.nombre)));
-    this.clienteId.set(c.id);
-    this.nuevoCliente.set(false);
+    this.modoCliente.set('final');
+    this.busqueda.set('');
+    this.nuevoNombre.set('');
+    this.nuevoEmail.set('');
+    this.nuevoTelefono.set('');
   }
 
   emitir(): void {
+    if (!this.puedeEmitir()) return;
     this.limpiarAvisos();
     this.enviando.set(true);
-    const venta: VentaInput = {
-      cliente_id: this.clienteId(),
-      forma_pago: this.formaPago(),
-      items: this.carrito().map((l) => ({ producto_id: l.producto.id, cantidad: l.cantidad })),
-    };
-    this.api.registrarVenta(venta).subscribe({
-      next: (r) => {
-        this.enviando.set(false);
-        this.carrito.set([]);
-        this.mensaje.set({ tipo: 'aviso-verde', texto: `Venta registrada · Factura ${r.data.numero}` });
-        this.recargarProductos();
-      },
-      error: (e: HttpErrorResponse) => {
-        this.enviando.set(false);
-        if (e.status === 409) {
-          // P1: otro vendedor vendió el último producto mientras armábamos la venta.
-          const texto = mensajeError(e);
-          const linea = this.carrito().find((l) => texto.includes(l.producto.nombre) || texto.includes(l.producto.codigo));
-          this.productoSinStock.set(linea?.producto.id ?? null);
-          this.errorStock.set(texto);
+    const items = this.carrito().map((l) => ({ producto_id: l.producto.id, cantidad: l.cantidad }));
+    this.resolverCliente()
+      .pipe(switchMap((cliente_id) => this.api.registrarVenta({ cliente_id, forma_pago: this.formaPago(), items })))
+      .subscribe({
+        next: (r) => {
+          this.enviando.set(false);
+          this.descartar();
+          this.mensaje.set({ tipo: 'aviso-verde', texto: `Venta registrada · Factura ${r.data.numero}` });
           this.recargarProductos();
-        } else if (e.status === 404 || e.status === 405) {
-          this.mensaje.set({ tipo: 'aviso-amarillo', texto: 'La API todavía no tiene el registro de ventas (POST /api/ventas). La pantalla ya está lista para cuando José lo publique.' });
-        } else {
-          this.mensaje.set({ tipo: 'aviso-rojo', texto: mensajeError(e) });
-        }
-      },
+        },
+        error: (e: HttpErrorResponse) => {
+          this.enviando.set(false);
+          const campos = erroresCampos(e);
+          if (e.status === 409) {
+            // P1: otro vendedor vendió el último producto mientras armábamos la venta.
+            const texto = mensajeError(e);
+            const linea = this.carrito().find((l) => texto.includes(l.producto.nombre) || texto.includes(l.producto.codigo));
+            this.productoSinStock.set(linea?.producto.id ?? null);
+            this.errorStock.set(texto);
+            this.recargarProductos();
+          } else if (e.status === 404 || e.status === 405) {
+            this.mensaje.set({
+              tipo: 'aviso-amarillo',
+              texto: 'La API todavía no tiene el registro de ventas (POST /api/ventas). La pantalla ya está lista para cuando José lo publique.',
+            });
+          } else if (campos) {
+            this.mensaje.set({ tipo: 'aviso-rojo', texto: Object.values(campos).join(' ') });
+          } else {
+            this.mensaje.set({ tipo: 'aviso-rojo', texto: mensajeError(e) });
+          }
+        },
+      });
+  }
+
+  /** Devuelve el id del cliente de la factura; si hace falta, lo registra primero. */
+  private resolverCliente(): Observable<number> {
+    if (this.modoCliente() === 'final') {
+      const cf = this.clientes().find((c) => c.identificacion === CONSUMIDOR_FINAL.identificacion);
+      if (cf) return of(cf.id);
+      return this.registrar({ ...CONSUMIDOR_FINAL, email: null, telefono: null, direccion: null, activo: true });
+    }
+    const existente = this.clienteEncontrado();
+    if (existente) return of(existente.id);
+    return this.registrar({
+      tipo_identificacion: this.tipoIdent(),
+      identificacion: this.busqueda().trim(),
+      nombre: this.nuevoNombre().trim(),
+      email: this.nuevoEmail().trim() || null,
+      telefono: this.nuevoTelefono().trim() || null,
+      direccion: null,
+      activo: true,
     });
+  }
+
+  private registrar(datos: Omit<Cliente, 'id'>): Observable<number> {
+    return this.api.crearCliente(datos).pipe(
+      tap((c) => this.clientes.update((l) => [...l, c])),
+      map((c) => c.id),
+    );
   }
 
   private recargarProductos(): void {

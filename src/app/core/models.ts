@@ -54,6 +54,18 @@ export interface Cliente {
 
 export type ClienteInput = Omit<Cliente, 'id'>;
 
+export interface UsuarioInput {
+  name: string;
+  email: string;
+  password?: string;
+  password_confirmation?: string;
+  roles: string[];
+  activo: boolean;
+}
+
+/** Identificación que el SRI usa para "Consumidor final". */
+export const CONSUMIDOR_FINAL = { tipo_identificacion: 'RUC' as const, identificacion: '9999999999999', nombre: 'CONSUMIDOR FINAL' };
+
 export interface Rol {
   id: number;
   name: string;

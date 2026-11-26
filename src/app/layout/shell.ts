@@ -2,6 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
 import { filter } from 'rxjs';
 import { AuthService } from '../core/auth.service';
+import { ConfirmarDialogo } from '../shared/confirmar';
 import { Icono } from '../shared/icono';
 
 interface Opcion {
@@ -15,7 +16,7 @@ interface Opcion {
 /** Estructura de las pantallas internas: menú lateral + cabecera + contenido. */
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, Icono],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, Icono, ConfirmarDialogo],
   template: `
     <div class="app">
       <aside class="lateral" [class.abierto]="menuAbierto()">
@@ -30,7 +31,9 @@ interface Opcion {
               </a>
               <div class="subitems">
                 @for (h of op.hijos; track h.ruta) {
-                  <a [routerLink]="h.ruta" routerLinkActive="sub-activo" class="subitem">{{ h.texto }}</a>
+                  @if (!h.permiso || auth.puede(h.permiso)) {
+                    <a [routerLink]="h.ruta" routerLinkActive="sub-activo" [routerLinkActiveOptions]="{ exact: h.ruta === '/productos' }" class="subitem">{{ h.texto }}</a>
+                  }
                 }
               </div>
             } @else {
@@ -73,6 +76,7 @@ interface Opcion {
         <main class="contenido"><router-outlet /></main>
       </div>
     </div>
+    <app-confirmar />
   `,
   styles: `
     .app { display: flex; min-height: 100vh; }
@@ -123,7 +127,15 @@ export class Shell {
         { texto: 'Facturas', ruta: '/ventas/facturas' },
       ],
     },
-    { texto: 'Productos', icono: 'productos', ruta: '/productos', permiso: 'productos.ver' },
+    {
+      texto: 'Productos',
+      icono: 'productos',
+      permiso: 'productos.ver',
+      hijos: [
+        { texto: 'Productos', ruta: '/productos', permiso: 'productos.ver' },
+        { texto: 'Categorías', ruta: '/productos/categorias', permiso: 'categorias.ver' },
+      ],
+    },
     { texto: 'Inventario', icono: 'inventario', ruta: '/inventario' },
     { texto: 'Clientes', icono: 'clientes', ruta: '/clientes', permiso: 'clientes.ver' },
   ];
@@ -155,7 +167,7 @@ export class Shell {
   }
 
   enSeccion(op: Opcion): boolean {
-    return !!op.hijos?.some((h) => this.url().startsWith(h.ruta.split('/').slice(0, 2).join('/')));
+    return !!op.hijos?.some((h) => this.url().split('?')[0].startsWith(h.ruta.split('/').slice(0, 2).join('/')));
   }
 
   buscar(texto: string): void {

@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "start:local": "ng serve --configuration local"
+    "start:local": "ng serve --configuration local",
+    "subir:dev": "ng build && npx wrangler@4 pages deploy dist/comercial-nova-web/browser --project-name comercial-nova-web --branch dev --commit-dirty=true"
   },
   "private": true,
   "packageManager": "npm@11.12.1",

@@ -5,6 +5,7 @@ import { forkJoin, of } from 'rxjs';
 import { ApiService, mensajeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 import { Categoria, Producto } from '../core/models';
+import { Confirmar } from '../shared/confirmar';
 import { Icono, iconoCategoria } from '../shared/icono';
 import { UsdPipe, estadoStock } from '../shared/formato';
 
@@ -67,9 +68,12 @@ type Filtro = 'todos' | 'bajo' | 'agotados' | 'inactivos';
                     <td>{{ +p.porcentaje_iva }} %</td>
                     <td><span class="pill" [class]="estado(p.stock).clase">{{ p.stock }} u. · {{ estado(p.stock).texto }}</span></td>
                     <td><span class="pill" [class]="p.activo ? 'pill-verde' : 'pill-gris'">{{ p.activo ? 'Activo' : 'Inactivo' }}</span></td>
-                    <td class="num">
+                    <td class="num acciones">
                       @if (auth.puede('productos.editar')) {
                         <a [routerLink]="['/productos', p.id]" class="btn btn-secundario btn-chico"><app-icono nombre="editar" [tam]="14" /> Editar</a>
+                      }
+                      @if (auth.puede('productos.eliminar')) {
+                        <button class="btn btn-peligro btn-chico" (click)="eliminar(p)" [attr.aria-label]="'Eliminar ' + p.nombre"><app-icono nombre="basura" [tam]="14" /></button>
                       }
                     </td>
                   </tr>
@@ -89,6 +93,8 @@ type Filtro = 'todos' | 'bajo' | 'agotados' | 'inactivos';
     .producto { display: flex; align-items: center; gap: 12px; }
     .mini { width: 38px; height: 38px; border-radius: 10px; background: #f3f5f9; display: grid; place-items: center; color: #8592a8; flex: none; }
     .desplazable { overflow-x: auto; }
+    .acciones { white-space: nowrap; }
+    .acciones .btn { margin-left: 6px; }
   `,
 })
 export class ProductosPage {
@@ -100,7 +106,8 @@ export class ProductosPage {
   cargando = signal(true);
   error = signal('');
   texto = signal(this.ruta.snapshot.queryParamMap.get('q') ?? '');
-  categoria = signal<number | null>(null);
+  categoria = signal<number | null>(this.ruta.snapshot.queryParamMap.get('categoria') ? +this.ruta.snapshot.queryParamMap.get('categoria')! : null);
+  private confirmar = inject(Confirmar);
   filtro = signal<Filtro>((this.ruta.snapshot.queryParamMap.get('filtro') as Filtro) ?? 'todos');
   estado = estadoStock;
   icono = iconoCategoria;
@@ -133,6 +140,18 @@ export class ProductosPage {
       return !t || p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t);
     });
   });
+
+  async eliminar(p: Producto): Promise<void> {
+    const si = await this.confirmar.preguntar(
+      'Eliminar producto',
+      `¿Seguro que quieres eliminar «${p.nombre}»? Las facturas donde aparece se conservan.`,
+    );
+    if (!si) return;
+    this.api.eliminarProducto(p.id).subscribe({
+      next: () => this.productos.update((l) => l.filter((x) => x.id !== p.id)),
+      error: (e) => this.error.set(mensajeError(e)),
+    });
+  }
 
   constructor() {
     forkJoin({
